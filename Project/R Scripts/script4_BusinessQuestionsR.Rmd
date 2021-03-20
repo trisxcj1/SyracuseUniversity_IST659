@@ -1,0 +1,168 @@
+# Code
+## Connecting to the DB
+```{r}
+# Create a connection to SQL Server using ODBC
+myconn <- DBI::dbConnect(odbc::odbc(),
+          Driver             = "Client Name",
+          Server             = "DB Server",
+          Database           = "DB Name",
+          Trusted_Connection = "Yes"
+)
+
+```
+
+## Business Questions
+### Which product is the top seller by dollar value?
+```{r}
+# Writing the query/SELECT statement
+top_product_by_dollar_value_query <- 
+"SELECT 
+	tlg_Product.ProductName,
+	sum(tlg_Invoice.AmountOwed) as TotalDollarsSold
+FROM tlg_OrderDetail
+JOIN tlg_Product ON tlg_OrderDetail.ProductID = tlg_Product.ProductID
+JOIN tlg_Invoice ON tlg_OrderDetail.OrderID = tlg_Invoice.OrderID
+GROUP BY
+	tlg_Product.ProductName
+ORDER BY TotalDollarsSold DESC"
+
+# Querying the DB
+top_product_by_dollar_value <- dbGetQuery(myconn, top_product_by_dollar_value_query)
+
+# Plotting the data
+ggplot(top_product_by_dollar_value) +
+  geom_col(aes(y=reorder(ProductName, TotalDollarsSold), x=TotalDollarsSold), col=3) +
+  xlab("Total Dollars Sold") +
+  ylab("Product Name") +
+  ggtitle("Total Dollars Sold by Product") +
+  theme_fivethirtyeight()
+
+```
+
+### Which product is the top seller by quantity sold?
+```{r}
+# Writing the query/SELECT statement
+top_product_by_units_sold_query <-
+"SELECT
+	tlg_Product.ProductName,
+	sum(tlg_OrderDetail.Quantity) as QuantitySold
+FROM tlg_OrderDetail
+JOIN tlg_Product ON tlg_OrderDetail.ProductID = tlg_Product.ProductID
+GROUP BY
+	tlg_Product.ProductName
+ORDER BY QuantitySold DESC"
+
+# Querying the DB
+top_product_by_units_sold <- dbGetQuery(myconn, top_product_by_units_sold_query)
+
+# Plotting the data
+ggplot(top_product_by_units_sold) +
+  geom_col(aes(y=reorder(ProductName, QuantitySold), x=QuantitySold), col=3) +
+  xlab("Total Units Sold") +
+  ylab("Product Name") +
+  ggtitle("Total Units Sold by Product") +
+  theme_fivethirtyeight()
+
+```
+
+### How many customers have purchased more than once?
+```{r}
+# Writing the query/SELECT statement
+repeat_customer_distribution_query <-
+"SELECT
+	A.NumberOfOrders,
+	count(A.CustomerID) as NumberOfCustomers
+FROM
+	(SELECT
+		tlg_Order.CustomerID,
+		count(tlg_Order.OrderID) as NumberOfOrders
+	FROM tlg_Order
+	GROUP BY
+		tlg_Order.CustomerID) as A
+GROUP BY
+	A.NumberOfOrders
+ORDER BY A.NumberOfOrders"
+
+# Querying the DB
+repeat_customer_distribution <- dbGetQuery(myconn, repeat_customer_distribution_query)
+repeat_customer_distribution <- repeat_customer_distribution %>% 
+  mutate(DistributionOfCustomers = round(NumberOfCustomers / sum(NumberOfCustomers) * 100, 2))
+
+colnames(repeat_customer_distribution) <- c("Number of Orders", "Number of Customers", "Distribution of Customers (%)")
+
+repeat_customer_distribution
+
+```
+
+### What is the distribution of the amount spent by customers in the highest grossing month?
+```{r}
+# Writing the query/SELECT statement
+distribution_of_sales_top_month_query <- 
+"SELECT * FROM dbo.tlg_DistributionOfSalesInTopSellingMonth
+ORDER BY AmountSpent"
+
+# Querying the DB
+distribution_of_sales_top_month <- dbGetQuery(myconn, distribution_of_sales_top_month_query)
+distribution_of_sales_top_month <- distribution_of_sales_top_month %>% 
+  mutate(DistributionOfCustomers = round(NumberOfCustomers / sum(NumberOfCustomers) * 100, 2)) %>% 
+  select(AmountSpent, NumberOfCustomers, DistributionOfCustomers, OrderMonthYear)
+
+colnames(distribution_of_sales_top_month) <- c(
+  "Total Amount Spent",
+  "Number of Customers",
+  "Distribution of Customers (%)",
+  "Reference Period (MM-YYYY)"
+)
+
+distribution_of_sales_top_month
+
+```
+
+### Which city has the greatest number of customers?
+```{r}
+# Writing the query/SELECT statement
+number_of_customers_by_city_query <-
+"SELECT * FROM dbo.tlg_CustomersByCity
+ORDER BY NumberOfCustomers DESC"
+
+# Querying the DB
+number_of_customers_by_city <- dbGetQuery(myconn, number_of_customers_by_city_query)
+number_of_customers_by_city <- number_of_customers_by_city %>% 
+  mutate(PercentageOfCustomers = round(NumberOfCustomers / sum(NumberOfCustomers) * 100, 2))
+
+colnames(number_of_customers_by_city) <- c(
+  "City",
+  "Number of Customers",
+  "Percentage of Customers (%)"
+)
+
+number_of_customers_by_city
+
+```
+
+### Which employee completes the most orders?
+```{r}
+# Writing the query/SELECT statement
+number_of_orders_closed_by_employee_query <-
+"SELECT * FROM dbo.tlg_OrdersClosedByEmployee
+ORDER BY NumberOfOrdersClosed DESC"
+
+# Querying the DB
+number_of_orders_closed_by_employee <- dbGetQuery(myconn, number_of_orders_closed_by_employee_query)
+
+# Plotting the data
+ggplot(number_of_orders_closed_by_employee) +
+  geom_col(aes(x=reorder(EmployeeFullName, NumberOfOrdersClosed), y=NumberOfOrdersClosed), fill=2, col=1) +
+  xlab("Employee (First name, Last name)") +
+  ylab("Number of Orders Closed") +
+  ggtitle("Number of Orders Closed by Employee") +
+  theme_tufte()
+
+
+```
+
+## Disconnecting fromt he DB
+```{r}
+DBI::dbDisconnect(myconn)
+
+```
